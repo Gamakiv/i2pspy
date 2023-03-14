@@ -12,5 +12,5 @@ CREATE TABLE spider (
   html TEXT,
   hash_html TEXT,
   screenshot TEXT,
-  verison INTEGER
+  version INTEGER
 );

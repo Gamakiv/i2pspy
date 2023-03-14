@@ -1,10 +1,11 @@
-#import sqlite3
+import sqlite3
 from selenium import webdriver
 import requests
 from bs4 import BeautifulSoup
 import hashlib
 import os
 import datetime
+import timeouts
 
 
 proxies = {
@@ -17,7 +18,7 @@ proxies = {
 
 def notbon_grabber():
         r = requests.get('http://notbob.i2p/cgi-bin/defcon.cgi', proxies=proxies)
-        print('Status requests grabber: ', r)
+        print('Status requests notbob.i2p: ', r)
 
         #TODO
         #if not 200 - repeat
@@ -38,8 +39,13 @@ def get_screenshot(url):
         chrome_options.add_argument('window-size=1366x768')
         chrome_options.add_argument('disable-gpu')
         chrome_options.add_argument('--proxy-server=127.0.0.1:4444')
+        chrome_options.add_argument('--disable-in-process-stack-traces')
+        chrome_options.add_argument('--output=/dev/null')
+        chrome_options.add_argument('--disable-logging')
+        chrome_options.add_argument('--log-level=3')
+        chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
 
-        driver = webdriver.Chrome('chromedriver', chrome_options=chrome_options)
+        driver = webdriver.Chrome('~/PythonSource/i2pspy/chromedriver', chrome_options=chrome_options)
         driver.get(url)
         driver.implicitly_wait(3)
         driver.get_screenshot_as_file('screen/tmp.png')
@@ -63,25 +69,98 @@ def get_hash(filename):
    return h.hexdigest()
 
 
+def check_version_record(link):
+    sql_connect = sqlite3.connect('db/i2pspy.db')
+    cursor = sql_connect.cursor()
+    cursor.execute("SELECT MAX(version) FROM spider WHERE link=?", [link])
+    version = cursor.fetchone()
+    if version[0] == None:
+        return 1
+    else:
+        return version[0]
+
+
 def data_extraction(site):
         for i in site:
-                r = requests.get(i, proxies=proxies)
-                now = datetime.datetime.now()
+                try:
+                    r = requests.get(i, proxies=proxies, timeout=20)
+                    now = datetime.datetime.now()
+
+                except:
+                    print('Status requests site [', i, ']:  <Response [408M]>')
+                    continue
 
                 print('Status requests site [',i, ']: ',r)
-
                 if r.status_code == 200:
                         soup = BeautifulSoup(r.text, 'html.parser')
-                        title = soup.find('title')                        
-                        print(title.string)
-                        way_screen = get_screenshot(i)
+                        title = soup.find('title')
+
+                        try:
+                            stitle = title.get_text()
+                            
+                        except:
+                            stitle = 'Title_None'
+
+                        way_screen = get_screenshot(i) 
 
                         tmphtml = open('html.tmp', 'w')
                         tmphtml.write(r.text)
                         tmphtml.close()
                         
+                        sql_connect = sqlite3.connect('db/i2pspy.db')
+                        cursor =sql_connect.cursor()
+                        print('Connect SQLite...')
 
-                        #db_append = (now.strftime("%d-%m-%Y %H:%M"), i, title, r.text, get_hash(memoryfile), way_screen, version)
+                        if check_version_record(i) != 1:
+                            cursor.execute("SELECT hash_html FROM spider WHERE version=?", [check_version_record(i)])
+                            hash_in_base = cursor.fetchone()
+
+                            if hash_in_base[0] == get_hash('html.tmp'):
+                                print('No changes were detected. Passages...')
+                                continue
+
+                            else:
+                                print('Changes have been detected. Creating a new version...')
+                                db_append = (now.strftime("%d-%m-%Y %H:%M"), 
+                                             i, 
+                                             stitle, 
+                                             r.text, 
+                                             get_hash('html.tmp'), 
+                                             way_screen, 
+                                             check_version_record(i)+1)
+
+                                sql_query = """ INSERT INTO spider 
+                                            (dt, link, title, html, hash_html, screenshot, version)
+                                            VALUES 
+                                            (?, ?, ?, ?, ?, ?, ?);
+                                            """
+
+                                cursor.execute(sql_query, db_append)
+                                sql_connect.commit()
+                                cursor.close()
+                                os.remove('html.tmp')
+
+                        else:
+                            print('New site when scanning. Adding...')
+                            db_append = (now.strftime("%d-%m-%Y %H:%M"), 
+                                        i, 
+                                        stitle,
+                                        r.text, 
+                                        get_hash('html.tmp'), 
+                                        way_screen, 
+                                        1)
+
+                            sql_query = """ INSERT INTO spider 
+                                            (dt, link, title, html, hash_html, screenshot, version)
+                                            VALUES 
+                                            (?, ?, ?, ?, ?, ?, ?);
+                                            """
+
+                            cursor.execute(sql_query, db_append)
+                            sql_connect.commit()
+                            cursor.close()
+                            os.remove('html.tmp')
+
                 else:
                         pass
                         ##TODO

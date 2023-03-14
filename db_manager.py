@@ -1,8 +1,7 @@
 import sqlite3
 import os
 
-
-db = 'db/i2pspy.db'
+patch_db = 'db/i2pspy.db'
 
 
 def createdb(path_db):
@@ -30,4 +29,4 @@ def createdb(path_db):
             print("Connection error", error)
 
 
-createdb()
+createdb(patch_db)
