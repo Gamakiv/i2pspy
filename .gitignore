@@ -3,5 +3,6 @@
 /lib/
 lib64
 /share/
-chromedriver
+/screen/
+chromedriver*
 /db/*.db
